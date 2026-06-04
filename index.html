@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>着物リメイク ダッシュボード</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --primary: #B45309;
+      --success: #059669;
+      --warning: #D97706;
+      --danger: #DC2626;
+    }
+    body { background: #FDF8F0; font-family: 'Hiragino Sans', 'Noto Sans JP', sans-serif; }
+    .navbar { box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    .stat-card {
+      border: none; border-radius: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      transition: transform 0.18s, box-shadow 0.18s;
+    }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,0.11); }
+    .stat-icon {
+      width: 44px; height: 44px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.25rem; flex-shrink: 0;
+    }
+    .stat-value { font-size: 1.9rem; font-weight: 700; line-height: 1.1; }
+    .chart-card { border: none; border-radius: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    .table-container { border: none; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    .table > :not(caption) > * > * { padding: 0.65rem 1rem; }
+    .status-pill {
+      padding: 2px 10px; border-radius: 999px;
+      font-size: 0.75rem; font-weight: 600; white-space: nowrap; display: inline-block;
+    }
+    .pill-green  { color: #059669; background: #ECFDF5; }
+    .pill-red    { color: #DC2626; background: #FEF2F2; }
+    .pill-orange { color: #D97706; background: #FFFBEB; }
+    .pill-gray   { color: #6B7280; background: #F3F4F6; }
+    .pill-amber  { color: #B45309; background: #FEF3C7; }
+    .days-badge {
+      display: inline-block; padding: 2px 8px;
+      border-radius: 6px; font-size: 0.78rem; font-weight: 700;
+    }
+    .days-ok     { background: #ECFDF5; color: #059669; }
+    .days-warn   { background: #FFFBEB; color: #D97706; }
+    .days-danger { background: #FEF2F2; color: #DC2626; }
+    tr.row-danger { background-color: #FFF5F5 !important; }
+    tr.row-warn   { background-color: #FFFDF0 !important; }
+    .filter-btn.active { background-color: #B45309; border-color: #B45309; color: #fff !important; }
+    .tab-btn { border: none; background: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; color: #6B7280; cursor: pointer; }
+    .tab-btn.active { background: #B45309; color: #fff; }
+    .section-tab { display: none; }
+    .section-tab.active { display: block; }
+    .ad-period-btn.active { background: #B45309; color: #fff; border-color: #B45309; }
+    .course-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
+    .pill-tsujyo { background: #FEF3C7; color: #B45309; }
+    .pill-entry  { background: #FCE7F3; color: #BE185D; }
+    .info-banner {
+      background: #FFFBEB; border: 1px solid #FDE68A;
+      border-radius: 10px; padding: 9px 16px; font-size: 0.84rem;
+    }
+    .error-banner {
+      background: #FEF2F2; border: 1px solid #FECACA;
+      border-radius: 10px; padding: 9px 16px; font-size: 0.84rem;
+    }
+    .ads-placeholder {
+      background: #FFFBEB; border: 2px dashed #FDE68A;
+      border-radius: 14px; padding: 32px; text-align: center;
+    }
+    @media (max-width: 576px) { .stat-value { font-size: 1.5rem; } }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-light bg-white px-4 py-2 sticky-top">
+  <span class="navbar-brand fw-bold fs-6">
+    <i class="bi bi-bar-chart-fill me-2" style="color:#B45309;"></i>着物リメイク ダッシュボード
+  </span>
+  <div class="d-flex align-items-center gap-3">
+    <small class="text-muted d-none d-sm-inline" id="lastUpdated"></small>
+    <button class="btn btn-sm text-white" style="background:#B45309;" onclick="loadAll()">
+      <i class="bi bi-arrow-clockwise me-1"></i>更新
+    </button>
+  </div>
+</nav>
+
+<div class="container-fluid py-3 px-3 px-md-4">
+
+  <!-- エラーバナー -->
+  <div id="errorBanner" class="error-banner mb-3" style="display:none;">
+    <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>
+    一部のデータ取得に失敗しました。スプレッドシートの公開設定を確認してください。
+  </div>
+
+  <!-- ローディング -->
+  <div id="loading" class="text-center py-5">
+    <div class="spinner-border text-warning" role="status"></div>
+    <div class="mt-2 text-muted small">データ読み込み中...</div>
+  </div>
+
+  <!-- メインダッシュボード -->
+  <div id="dashboard" style="display:none;">
+
+    <!-- タブ切り替え -->
+    <div class="d-flex gap-2 mb-4">
+      <button class="tab-btn active" id="tabBtn1" onclick="switchTab(1)">
+        <i class="bi bi-people-fill me-1"></i>受講生管理
+      </button>
+      <button class="tab-btn" id="tabBtn2" onclick="switchTab(2)">
+        <i class="bi bi-megaphone-fill me-1"></i>広告パフォーマンス
+      </button>
+    </div>
+
+    <!-- ===== タブ1: 受講生管理 ===== -->
+    <div id="tab1" class="section-tab active">
+
+      <!-- サマリーカード -->
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-xl-3">
+          <div class="card stat-card p-3">
+            <div class="d-flex align-items-start gap-3">
+              <div class="stat-icon" style="background:#FEF3C7; color:#B45309;"><i class="bi bi-people-fill"></i></div>
+              <div>
+                <div class="text-muted small">総受講生数</div>
+                <div class="stat-value text-dark" id="statTotal">0</div>
+                <div class="text-muted" style="font-size:0.73rem;" id="statTotalSub"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-xl-3">
+          <div class="card stat-card p-3">
+            <div class="d-flex align-items-start gap-3">
+              <div class="stat-icon" style="background:#ECFDF5; color:#059669;"><i class="bi bi-check-circle-fill"></i></div>
+              <div>
+                <div class="text-muted small">継続中</div>
+                <div class="stat-value" style="color:#059669;" id="statActive">0</div>
+                <div class="text-muted" style="font-size:0.73rem;">退会除く</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-xl-3">
+          <div class="card stat-card p-3">
+            <div class="d-flex align-items-start gap-3">
+              <div class="stat-icon" style="background:#FFFBEB; color:#D97706;"><i class="bi bi-clock-fill"></i></div>
+              <div>
+                <div class="text-muted small">期限間近（30日以内）</div>
+                <div class="stat-value" style="color:#D97706;" id="statNear">0</div>
+                <div class="text-muted" style="font-size:0.73rem;">退会除く</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-xl-3">
+          <div class="card stat-card p-3">
+            <div class="d-flex align-items-start gap-3">
+              <div class="stat-icon" style="background:#F3F4F6; color:#6B7280;"><i class="bi bi-x-circle-fill"></i></div>
+              <div>
+                <div class="text-muted small">退会</div>
+                <div class="stat-value" style="color:#6B7280;" id="statRetired">0</div>
+                <div class="text-muted" style="font-size:0.73rem;" id="statRetiredSub"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 受講生テーブル -->
+      <div class="card table-container">
+        <div class="card-header bg-white border-bottom p-3">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h6 class="fw-bold mb-0 me-2">受講生一覧</h6>
+            <div class="d-flex gap-1 flex-wrap">
+              <button class="btn btn-sm btn-outline-secondary filter-btn active" onclick="filterStudents('all',this)">すべて</button>
+              <button class="btn btn-sm btn-outline-secondary filter-btn" onclick="filterStudents('tsujyo',this)" style="border-color:#B45309; color:#B45309;">通常コース</button>
+              <button class="btn btn-sm btn-outline-secondary filter-btn" onclick="filterStudents('entry',this)" style="border-color:#BE185D; color:#BE185D;">エントリー</button>
+              <button class="btn btn-sm btn-outline-warning filter-btn" onclick="filterStudents('near',this)">期限間近</button>
+              <button class="btn btn-sm btn-outline-secondary filter-btn" onclick="filterStudents('retired',this)">退会</button>
+            </div>
+            <div class="ms-auto">
+              <input type="text" class="form-control form-control-sm" id="studentSearch"
+                placeholder="名前で検索..." oninput="renderStudentTable()" style="width:150px;">
+            </div>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="text-nowrap small">お名前</th>
+                <th class="text-nowrap small">コース</th>
+                <th class="text-nowrap small">入会日</th>
+                <th class="text-nowrap small">満了日</th>
+                <th class="text-nowrap small">残り日数</th>
+                <th class="text-nowrap small">継続の有無</th>
+                <th class="text-nowrap small">継続の期日</th>
+              </tr>
+            </thead>
+            <tbody id="studentTableBody"></tbody>
+          </table>
+        </div>
+        <div class="card-footer bg-white text-muted small p-2 px-3" id="studentFooter"></div>
+      </div>
+    </div><!-- /tab1 -->
+
+    <!-- ===== タブ2: 広告パフォーマンス ===== -->
+    <div id="tab2" class="section-tab">
+
+      <!-- 広告スプシ未公開の場合 -->
+      <div id="adsBanner" class="info-banner mb-4" style="display:none;">
+        <i class="bi bi-info-circle-fill text-warning me-2"></i>
+        広告データのスプレッドシートを「<strong>リンクを知っている全員が閲覧可</strong>」に設定するとデータが表示されます。
+        <br><small class="text-muted">スプシID: 1SVtKaPjt-gIMgSjFQiV-MYD76U6oW_1ALzanoQwTYFM</small>
+      </div>
+
+      <!-- ROAS設定 -->
+      <div class="card stat-card p-3 mb-4" id="roasSettings" style="display:none;">
+        <div class="d-flex flex-wrap align-items-center gap-3">
+          <span class="fw-semibold small"><i class="bi bi-gear-fill me-1" style="color:#B45309;"></i>ROAS計算設定</span>
+          <div class="d-flex align-items-center gap-2">
+            <label class="small text-muted mb-0">通常コース単価</label>
+            <div class="input-group input-group-sm" style="width:130px;">
+              <span class="input-group-text">¥</span>
+              <input type="number" class="form-control" id="priceNormal" value="198000" onchange="renderAdsAll()">
+            </div>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <label class="small text-muted mb-0">エントリー単価</label>
+            <div class="input-group input-group-sm" style="width:130px;">
+              <span class="input-group-text">¥</span>
+              <input type="number" class="form-control" id="priceEntry" value="49800" onchange="renderAdsAll()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 期間選択 -->
+      <div class="d-flex align-items-center gap-2 mb-4" id="adsPeriodSelector" style="display:none;">
+        <span class="small fw-semibold text-muted">期間：</span>
+        <button class="btn btn-sm btn-outline-secondary ad-period-btn" onclick="setAdPeriod('thisMonth',this)">今月</button>
+        <button class="btn btn-sm btn-outline-secondary ad-period-btn" onclick="setAdPeriod('lastMonth',this)">先月</button>
+        <button class="btn btn-sm btn-outline-secondary ad-period-btn active" onclick="setAdPeriod('all',this)">全期間</button>
+      </div>
+
+      <!-- 広告サマリーカード -->
+      <div id="adsSummaryCards" style="display:none;">
+        <div class="row g-3 mb-4">
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card stat-card p-3">
+              <div class="text-muted small">消化金額</div>
+              <div class="fw-bold fs-5 mt-1" id="adSpend">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card stat-card p-3">
+              <div class="text-muted small">電話申込 ⑧</div>
+              <div class="fw-bold fs-5 mt-1" id="adPhone">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card stat-card p-3">
+              <div class="text-muted small">CPA</div>
+              <div class="fw-bold fs-5 mt-1" style="color:#D97706;" id="adCpa">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card stat-card p-3">
+              <div class="text-muted small">ROAS</div>
+              <div class="fw-bold fs-5 mt-1" style="color:#B45309;" id="adRoas">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card stat-card p-3">
+              <div class="text-muted small">動画視聴 ⑥</div>
+              <div class="fw-bold fs-5 mt-1" id="adVideo">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card stat-card p-3">
+              <div class="text-muted small">DF閲覧 ⑦</div>
+              <div class="fw-bold fs-5 mt-1" id="adDf">-</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 月別推移チャート -->
+        <div class="card chart-card p-3 mb-4">
+          <h6 class="fw-bold mb-3">月別推移</h6>
+          <div style="position:relative; height:220px;">
+            <canvas id="monthlyAdsChart"></canvas>
+          </div>
+        </div>
+
+        <!-- 広告別テーブル -->
+        <div class="card table-container">
+          <div class="card-header bg-white border-bottom p-3">
+            <h6 class="fw-bold mb-0">広告別パフォーマンス</h6>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th class="text-nowrap small">広告名</th>
+                  <th class="text-nowrap small text-end">消化金額</th>
+                  <th class="text-nowrap small text-end">⑥動画視聴</th>
+                  <th class="text-nowrap small text-end">⑦DF閲覧</th>
+                  <th class="text-nowrap small text-end">⑧電話申込</th>
+                  <th class="text-nowrap small text-end">CPA</th>
+                </tr>
+              </thead>
+              <tbody id="adsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 広告データ未公開プレースホルダー -->
+      <div id="adsPlaceholder" class="ads-placeholder" style="display:none;">
+        <i class="bi bi-lock-fill text-warning fs-2 mb-3 d-block"></i>
+        <h6 class="fw-bold">広告データを表示するには設定が必要です</h6>
+        <p class="text-muted small mb-3">
+          広告集計スプレッドシートが「リンクを知っている全員が閲覧可」になっていないと読み込めません。
+        </p>
+        <a href="https://docs.google.com/spreadsheets/d/1SVtKaPjt-gIMgSjFQiV-MYD76U6oW_1ALzanoQwTYFM/edit"
+           target="_blank" class="btn btn-sm btn-warning">
+          <i class="bi bi-box-arrow-up-right me-1"></i>スプレッドシートを開く
+        </a>
+      </div>
+
+    </div><!-- /tab2 -->
+
+  </div><!-- /dashboard -->
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ================================================================
+// 設定
+// ================================================================
+const TSUJYO_ID  = '1cQSqLZjqRGkHG8buFSi4j23OovYB8cn97gdD5L_bePU';
+const TSUJYO_GID = '851005096'; // フォームの回答1シート
+const ENTRY_ID   = '19tjWdsn7HQ7GwiPfN_3Dm_s5bIHW0NNywdwQwjWZpZw';
+const ADS_ID     = '1SVtKaPjt-gIMgSjFQiV-MYD76U6oW_1ALzanoQwTYFM';
+const NAME_COL   = 6; // 両コースともG列(index6)がお名前
+
+// ================================================================
+// 状態
+// ================================================================
+let studentsData = [];
+let adsMonthSummaries = {};
+let adsByMonthAndName = {};
+let currentStudentFilter = 'all';
+let currentAdsPeriod = 'all';
+let adsChart = null;
+let adsAvailable = false;
+
+// ================================================================
+// ユーティリティ
+// ================================================================
+const parseNum = v => {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') return parseFloat(v.replace(/,/g, '')) || 0;
+  return 0;
+};
+const fmt = n => Math.round(n).toLocaleString('ja-JP');
+const yen = n => '¥' + fmt(n);
+
+function getCurrentMonth() {
+  const d = new Date();
+  return `${d.getMonth() + 1}月`;
+}
+function getLastMonth() {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  return `${d.getMonth() + 1}月`;
+}
+
+// ================================================================
+// JSONP ローダー
+// ================================================================
+function loadSheetArrays(sheetId, gid, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const cbName = '__gviz_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const timer = setTimeout(() => {
+      delete window[cbName];
+      reject(new Error('timeout'));
+    }, timeoutMs);
+
+    window[cbName] = function(resp) {
+      clearTimeout(timer);
+      try {
+        const el = document.getElementById(cbName);
+        if (el) el.remove();
+        delete window[cbName];
+        const table = resp && resp.table;
+        if (!table) { resolve([]); return; }
+        const rows = (table.rows || []).map(row =>
+          (row.c || []).map(cell => {
+            if (!cell) return '';
+            if (cell.f != null) return String(cell.f);
+            if (cell.v != null) return String(cell.v);
+            return '';
+          })
+        ).filter(r => r.some(v => v !== ''));
+        resolve(rows);
+      } catch(e) { clearTimeout(timer); reject(e); }
+    };
+    const script = document.createElement('script');
+    script.id = cbName;
+    let url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=responseHandler:${cbName}`;
+    if (gid) url += `&gid=${gid}`;
+    url += `&t=${Date.now()}`;
+    script.src = url;
+    script.onerror = () => { clearTimeout(timer); delete window[cbName]; reject(new Error('load error')); };
+    document.head.appendChild(script);
+  });
+}
+
+// ================================================================
+// データ処理
+// ================================================================
+function processStudents(rows, courseType, nameColIndex) {
+  return rows
+    .filter(row => row[0] && row[nameColIndex])
+    .map(row => {
+      const rawDays = row[2];
+      const parsedDays = parseInt(rawDays);
+      const hasExpiry = rawDays !== '' && !isNaN(parsedDays);
+      return {
+        course: courseType,
+        timestamp: row[0],
+        expiryDate: row[1] || '',
+        remainingDays: hasExpiry ? parsedDays : null,
+        hasExpiry,
+        status: row[3] || '',
+        paymentMethod: row[4] || '',
+        nextExpiry: row[5] || '',
+        name: row[nameColIndex] || '不明'
+      };
+    })
+    .filter(s => s.name && s.name !== '不明');
+}
+
+function processAdsData(rows) {
+  adsMonthSummaries = {};
+  adsByMonthAndName = {};
+
+  rows.forEach(row => {
+    if (!row[0]) return;
+    const monthCell = String(row[0]).trim();
+    const adName    = String(row[4] || '').trim();
+    const spend     = parseNum(row[3]);
+    const video     = parseNum(row[6]);
+    const df        = parseNum(row[7]);
+    const phone     = parseNum(row[8]);
+
+    if (monthCell.endsWith('計')) {
+      const month = monthCell.replace('計', '');
+      if (!adsMonthSummaries[month]) {
+        adsMonthSummaries[month] = { spend: 0, video: 0, df: 0, phone: 0 };
+      }
+      adsMonthSummaries[month].spend += spend;
+      adsMonthSummaries[month].video += video;
+      adsMonthSummaries[month].df    += df;
+      adsMonthSummaries[month].phone += phone;
+    } else if (adName && spend > 0) {
+      if (!adsByMonthAndName[monthCell]) adsByMonthAndName[monthCell] = {};
+      if (!adsByMonthAndName[monthCell][adName]) {
+        adsByMonthAndName[monthCell][adName] = { spend: 0, video: 0, df: 0, phone: 0 };
+      }
+      adsByMonthAndName[monthCell][adName].spend += spend;
+      adsByMonthAndName[monthCell][adName].video += video;
+      adsByMonthAndName[monthCell][adName].df    += df;
+      adsByMonthAndName[monthCell][adName].phone += phone;
+    }
+  });
+}
+
+// ================================================================
+// 選択期間のデータ取得
+// ================================================================
+function getSelectedMonths() {
+  const all = Object.keys(adsMonthSummaries);
+  if (currentAdsPeriod === 'thisMonth') return [getCurrentMonth()].filter(m => all.includes(m));
+  if (currentAdsPeriod === 'lastMonth') return [getLastMonth()].filter(m => all.includes(m));
+  return all;
+}
+
+function getAggregatedAdsForPeriod() {
+  const months = getSelectedMonths();
+  const totals = { spend: 0, video: 0, df: 0, phone: 0 };
+  const adTotals = {};
+
+  months.forEach(month => {
+    const s = adsMonthSummaries[month];
+    if (s) {
+      totals.spend += s.spend;
+      totals.video += s.video;
+      totals.df    += s.df;
+      totals.phone += s.phone;
+    }
+    const ads = adsByMonthAndName[month] || {};
+    Object.entries(ads).forEach(([adName, data]) => {
+      if (!adTotals[adName]) adTotals[adName] = { spend: 0, video: 0, df: 0, phone: 0 };
+      adTotals[adName].spend += data.spend;
+      adTotals[adName].video += data.video;
+      adTotals[adName].df    += data.df;
+      adTotals[adName].phone += data.phone;
+    });
+  });
+
+  return { totals, adTotals };
+}
+
+// ================================================================
+// メインロード
+// ================================================================
+async function loadAll() {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('errorBanner').style.display = 'none';
+
+  let hasError = false;
+  adsAvailable = false;
+
+  try {
+    // 受講生データは並列ロード
+    const [tsujyoRows, entryRows] = await Promise.all([
+      loadSheetArrays(TSUJYO_ID, TSUJYO_GID),
+      loadSheetArrays(ENTRY_ID, null)
+    ]);
+
+    studentsData = [
+      ...processStudents(tsujyoRows, '通常コース', NAME_COL),
+      ...processStudents(entryRows, 'エントリーコース', NAME_COL)
+    ];
+    studentsData.sort((a, b) => a.remainingDays - b.remainingDays);
+  } catch(e) {
+    console.error('受講生データ読み込みエラー:', e);
+    hasError = true;
+  }
+
+  // 広告データは別途トライ（失敗しても受講生は表示）
+  try {
+    const adsRows = await loadSheetArrays(ADS_ID, null, 5000);
+    if (adsRows.length > 0) {
+      processAdsData(adsRows);
+      adsAvailable = true;
+    }
+  } catch(e) {
+    console.warn('広告データ読み込み失敗（スプシ公開設定確認要）:', e);
+    adsAvailable = false;
+  }
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  if (hasError) document.getElementById('errorBanner').style.display = 'block';
+  document.getElementById('lastUpdated').textContent = '更新: ' + new Date().toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
+
+  renderAll();
+}
+
+// ================================================================
+// 描画：全体
+// ================================================================
+function renderAll() {
+  renderStudentSummary();
+  renderStudentTable();
+  renderAdsSection();
+}
+
+// ================================================================
+// 描画：受講生サマリー
+// ================================================================
+function renderStudentSummary() {
+  const total   = studentsData.length;
+  const tsujyo  = studentsData.filter(s => s.course === '通常コース').length;
+  const entry   = studentsData.filter(s => s.course === 'エントリーコース').length;
+  const retired = studentsData.filter(s => isRetired(s.status)).length;
+  const active  = total - retired;
+  const near    = studentsData.filter(s => !isRetired(s.status) && s.hasExpiry && s.remainingDays !== null && s.remainingDays >= 0 && s.remainingDays <= 30).length;
+
+  document.getElementById('statTotal').textContent    = total;
+  document.getElementById('statTotalSub').textContent = `通常${tsujyo}名・エントリー${entry}名`;
+  document.getElementById('statActive').textContent   = active;
+  document.getElementById('statRetired').textContent  = retired;
+  document.getElementById('statRetiredSub').textContent = `通常${studentsData.filter(s=>s.course==='通常コース'&&isRetired(s.status)).length}・エントリー${studentsData.filter(s=>s.course==='エントリーコース'&&isRetired(s.status)).length}`;
+  document.getElementById('statNear').textContent     = near;
+}
+
+function isRetired(status) {
+  return status === '退会' || status === '退会済み';
+}
+
+// ================================================================
+// 描画：受講生テーブル
+// ================================================================
+function filterStudents(type, btn) {
+  currentStudentFilter = type;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderStudentTable();
+}
+
+function renderStudentTable() {
+  const search = (document.getElementById('studentSearch')?.value || '').trim().toLowerCase();
+  let data = studentsData.filter(s => {
+    if (currentStudentFilter === 'tsujyo')  return s.course === '通常コース';
+    if (currentStudentFilter === 'entry')   return s.course === 'エントリーコース';
+    if (currentStudentFilter === 'near')    return !isRetired(s.status) && s.hasExpiry && s.remainingDays !== null && s.remainingDays >= 0 && s.remainingDays <= 30;
+    if (currentStudentFilter === 'retired') return isRetired(s.status);
+    return true;
+  });
+  if (search) data = data.filter(s => s.name.toLowerCase().includes(search));
+
+  const tbody = document.getElementById('studentTableBody');
+  tbody.innerHTML = data.map(s => {
+    const d = s.remainingDays;
+    let dClass = 'days-ok';
+    let rowClass = '';
+    let dDisplay = '-';
+    if (!s.hasExpiry || d === null) {
+      dClass = 'days-ok'; dDisplay = '期日未設定';
+    } else if (d < 0) {
+      dClass = 'days-danger'; rowClass = 'row-danger'; dDisplay = Math.abs(d) + '日超過';
+    } else if (d === 0) {
+      dClass = 'days-warn'; rowClass = 'row-warn'; dDisplay = '今日';
+    } else if (d <= 30) {
+      dClass = 'days-warn'; rowClass = 'row-warn'; dDisplay = d + '日';
+    } else {
+      dDisplay = d + '日';
+    }
+
+    const statusPill = statusToPill(s.status);
+    const courseClass = s.course === '通常コース' ? 'pill-tsujyo' : 'pill-entry';
+    const entryDate = s.timestamp.split(' ')[0];
+
+    return `<tr class="${rowClass}">
+      <td class="fw-semibold small">${s.name}</td>
+      <td><span class="course-pill ${courseClass}">${s.course}</span></td>
+      <td class="small text-muted">${entryDate}</td>
+      <td class="small">${s.expiryDate || '-'}</td>
+      <td><span class="days-badge ${dClass}">${dDisplay}</span></td>
+      <td>${statusPill}</td>
+      <td class="small text-muted">${s.nextExpiry || '-'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('studentFooter').textContent = `${data.length}件表示`;
+}
+
+function statusToPill(status) {
+  if (!status) return '<span class="status-pill pill-gray">未定</span>';
+  if (isRetired(status)) return '<span class="status-pill pill-red">退会</span>';
+  if (status.includes('継続')) return '<span class="status-pill pill-green">' + status + '</span>';
+  if (status === '検討中') return '<span class="status-pill pill-orange">検討中</span>';
+  return `<span class="status-pill pill-gray">${status}</span>`;
+}
+
+// ================================================================
+// 描画：広告セクション
+// ================================================================
+function renderAdsSection() {
+  if (adsAvailable) {
+    document.getElementById('adsBanner').style.display = 'none';
+    document.getElementById('roasSettings').style.display = 'block';
+    document.getElementById('adsPeriodSelector').style.display = 'flex';
+    document.getElementById('adsSummaryCards').style.display = 'block';
+    document.getElementById('adsPlaceholder').style.display = 'none';
+    renderAdsAll();
+  } else {
+    document.getElementById('adsBanner').style.display = 'block';
+    document.getElementById('roasSettings').style.display = 'none';
+    document.getElementById('adsPeriodSelector').style.display = 'none';
+    document.getElementById('adsSummaryCards').style.display = 'none';
+    document.getElementById('adsPlaceholder').style.display = 'block';
+  }
+}
+
+function setAdPeriod(period, btn) {
+  currentAdsPeriod = period;
+  document.querySelectorAll('.ad-period-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderAdsAll();
+}
+
+function renderAdsAll() {
+  if (!adsAvailable) return;
+  const { totals, adTotals } = getAggregatedAdsForPeriod();
+  const priceNormal = parseNum(document.getElementById('priceNormal')?.value || 0);
+  const priceEntry  = parseNum(document.getElementById('priceEntry')?.value || 0);
+  const avgPrice = (priceNormal + priceEntry) / 2;
+  const cpa  = totals.phone > 0 ? totals.spend / totals.phone : 0;
+  const roas = totals.spend > 0 ? ((totals.phone * avgPrice) / totals.spend * 100) : 0;
+
+  document.getElementById('adSpend').textContent = yen(totals.spend);
+  document.getElementById('adPhone').textContent = totals.phone + '件';
+  document.getElementById('adCpa').textContent   = totals.phone > 0 ? yen(cpa) : '-';
+  document.getElementById('adRoas').textContent  = totals.spend > 0 ? fmt(roas) + '%' : '-';
+  document.getElementById('adVideo').textContent = totals.video + '件';
+  document.getElementById('adDf').textContent    = totals.df + '件';
+
+  renderMonthlyChart();
+  renderAdsTable(adTotals);
+}
+
+function renderMonthlyChart() {
+  const months = Object.keys(adsMonthSummaries);
+  const spends = months.map(m => adsMonthSummaries[m].spend);
+  const phones = months.map(m => adsMonthSummaries[m].phone);
+
+  if (adsChart) adsChart.destroy();
+  const ctx = document.getElementById('monthlyAdsChart').getContext('2d');
+  adsChart = new Chart(ctx, {
+    data: {
+      labels: months,
+      datasets: [
+        {
+          type: 'bar',
+          label: '消化金額',
+          data: spends,
+          backgroundColor: 'rgba(180,83,9,0.2)',
+          borderColor: '#B45309',
+          borderWidth: 2,
+          yAxisID: 'ySpend'
+        },
+        {
+          type: 'line',
+          label: '電話申込⑧',
+          data: phones,
+          borderColor: '#059669',
+          backgroundColor: 'rgba(5,150,105,0.1)',
+          borderWidth: 2,
+          pointRadius: 4,
+          fill: false,
+          tension: 0.3,
+          yAxisID: 'yPhone'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        ySpend: {
+          type: 'linear', position: 'left',
+          ticks: { callback: v => '¥' + v.toLocaleString() }
+        },
+        yPhone: {
+          type: 'linear', position: 'right',
+          grid: { drawOnChartArea: false },
+          ticks: { stepSize: 1 }
+        }
+      }
+    }
+  });
+}
+
+function renderAdsTable(adTotals) {
+  const rows = Object.entries(adTotals).sort((a, b) => b[1].spend - a[1].spend);
+  const tbody = document.getElementById('adsTableBody');
+  if (!tbody) return;
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">データなし</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(([adName, d]) => {
+    const cpa = d.phone > 0 ? yen(d.spend / d.phone) : '-';
+    return `<tr>
+      <td class="small fw-semibold">${adName}</td>
+      <td class="small text-end">${yen(d.spend)}</td>
+      <td class="small text-end">${d.video}</td>
+      <td class="small text-end">${d.df}</td>
+      <td class="small text-end">${d.phone}</td>
+      <td class="small text-end fw-semibold" style="color:#D97706;">${cpa}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ================================================================
+// タブ切り替え
+// ================================================================
+function switchTab(n) {
+  ['tab1','tab2'].forEach((id, i) => {
+    document.getElementById(id).classList.toggle('active', i === n - 1);
+    document.getElementById('tabBtn' + (i + 1)).classList.toggle('active', i === n - 1);
+  });
+}
+
+// ================================================================
+// 初期化
+// ================================================================
+loadAll();
+</script>
+</body>
+</html>
