@@ -385,12 +385,18 @@ function processKimonoAdsData(rows) {
     normalSales: 0, selfSales: 0, revenue: 0, spend: 0
   });
 
+  const EXCLUDE_AD_NAMES = ['広告合計', 'オーガニック合計', '総計', '実数（月末）', '実数当月まで累計'];
+
   rows.forEach(row => {
     const adName = String(row[1] || '').trim();
     const metric = String(row[3] || '').trim();
     const cumVal = parseNum(row[4]);
 
     if (adName && adName !== '') {
+      if (EXCLUDE_AD_NAMES.includes(adName)) {
+        currentAd = null;
+        return;
+      }
       currentAd = adName;
       if (!result[currentAd]) {
         result[currentAd] = {
